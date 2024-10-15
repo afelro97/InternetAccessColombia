@@ -4,3 +4,4 @@ data/*
 activate.sh
 InternetAccessColombia-DataCleaning/Limpieza/.idea
 InternetAccessColombia-DataCleaning/Limpieza/data
+InternetAccessColombia-DataCleaning/df_unificado_limpio.csv
