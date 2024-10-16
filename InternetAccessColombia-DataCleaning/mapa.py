@@ -46,7 +46,7 @@ def generar_mapa(departamento, municipio, accesos, limite):
 
     for _, row in df_filtrado.iterrows():
         folium.Marker([row['Latitud'], row['Longitud']],
-                      popup=f"Proveedor: {row['PROVEEDOR']}<br>Tecnología: {row['TECNOLOGÍA']}<br>Accesos: {row['No. ACCESOS FIJOS A INTERNET']}").add_to(marker_cluster)
+                      popup=f"Proveedor: {row['PROVEEDOR']}<br>Tecnología: {row['TECNOLOGÍA']}<br>Accesos: {row['No. ACCESOS FIJOS A INTERNET']}").add_to(marker_cluster) # Se le puede añadir mas información aqui
 
     return mapa
 
