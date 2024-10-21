@@ -46,7 +46,7 @@ def generar_mapa(departamento, municipio, accesos, limite):
 
     for _, row in df_filtrado.iterrows():
         folium.Marker([row['Latitud'], row['Longitud']],
-                      popup=f"Proveedor: {row['PROVEEDOR']}<br>Tecnología: {row['TECNOLOGÍA']}<br>Accesos: {row['No. ACCESOS FIJOS A INTERNET']}").add_to(marker_cluster) # Se le puede añadir mas información aqui
+                      popup=f"Proveedor: {row['PROVEEDOR']}<br>Tecnología: {row['TECNOLOGÍA']}<br>Accesos: {row['No. ACCESOS FIJOS A INTERNET']}").add_to(marker_cluster)  # Se le puede añadir más información aquí
 
     return mapa
 
@@ -71,8 +71,8 @@ limite_puntos = st.sidebar.slider('Número máximo de puntos a mostrar', min_val
 # Generar el mapa con los filtros aplicados
 mapa_generado = generar_mapa(departamento_seleccionado, municipio_seleccionado, accesos_seleccionados, limite_puntos)
 
-# Mostrar el mapa en Streamlit con mayor tamaño
-folium_static(mapa_generado, width=1500, height=800)
+# Mostrar el mapa en Streamlit con un ancho ajustado
+folium_static(mapa_generado, width=1300, height=700)
 
 # Mostrar información adicional
 st.write(f"Departamento seleccionado: {departamento_seleccionado}")
