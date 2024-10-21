@@ -7,6 +7,58 @@ from folium.plugins import MarkerCluster
 # Configuración para usar el ancho completo de la página
 st.set_page_config(layout="wide")
 
+# Agregar CSS personalizado para ajustar el layout y hacerlo responsive
+st.markdown("""
+    <style>
+    /* Ajuste del contenedor del mapa */
+    .streamlit-expanderHeader, .streamlit-expanderBody {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+    
+    /* Hacer que el mapa ocupe toda la pantalla disponible */
+    #map {
+        width: 100%;
+        height: calc(100vh - 150px);  /* Ajuste dinámico de altura según la pantalla */
+    }
+    
+    /* Ajuste general para pantallas pequeñas */
+    @media (max-width: 768px) {
+        .css-1d391kg {
+            margin-left: 0;
+            margin-right: 0;
+        }
+        .css-18e3th9 {
+            padding-top: 10px;
+            padding-left: 5px;
+            padding-right: 5px;
+        }
+        /* Ajustes para el mapa en pantallas pequeñas */
+        iframe {
+            width: 100% !important;
+            height: 400px !important;
+        }
+    }
+    
+    /* Ajustes para pantallas medianas */
+    @media (min-width: 768px) and (max-width: 1200px) {
+        iframe {
+            width: 100% !important;
+            height: 600px !important;
+        }
+    }
+
+    /* Ajustes para pantallas grandes */
+    @media (min-width: 1200px) {
+        iframe {
+            width: 100% !important;
+            height: 800px !important;
+        }
+    }
+    
+    </style>
+""", unsafe_allow_html=True)
+
 # Cargar el dataset unido y usar st.cache_data para mejorar el rendimiento
 @st.cache_data
 def cargar_datos():
@@ -46,7 +98,7 @@ def generar_mapa(departamento, municipio, accesos, limite):
 
     for _, row in df_filtrado.iterrows():
         folium.Marker([row['Latitud'], row['Longitud']],
-                      popup=f"Proveedor: {row['PROVEEDOR']}<br>Tecnología: {row['TECNOLOGÍA']}<br>Accesos: {row['No. ACCESOS FIJOS A INTERNET']}").add_to(marker_cluster)  # Se le puede añadir más información aquí
+                      popup=f"Proveedor: {row['PROVEEDOR']}<br>Tecnología: {row['TECNOLOGÍA']}<br>Accesos: {row['No. ACCESOS FIJOS A INTERNET']}").add_to(marker_cluster)
 
     return mapa
 
@@ -71,7 +123,7 @@ limite_puntos = st.sidebar.slider('Número máximo de puntos a mostrar', min_val
 # Generar el mapa con los filtros aplicados
 mapa_generado = generar_mapa(departamento_seleccionado, municipio_seleccionado, accesos_seleccionados, limite_puntos)
 
-# Mostrar el mapa en Streamlit con un ancho ajustado
+# Mostrar el mapa en Streamlit con mayor tamaño y ajustes responsivos
 folium_static(mapa_generado, width=1300, height=700)
 
 # Mostrar información adicional
