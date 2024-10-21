@@ -55,7 +55,9 @@ st.markdown("""
             height: 800px !important;
         }
     }
-    
+    [data-testid="stElementToolbar"] {
+                    display: none;
+                }
     </style>
 """, unsafe_allow_html=True)
 
@@ -67,7 +69,8 @@ def cargar_datos():
 df_unido_limpio = cargar_datos()
 
 # Función para generar el heatmap
-def generar_heatmap(departamento, municipio, accesos, limite):
+# Función para generar el mapa
+def generar_mapa(departamento, municipio, accesos, limite):
     if departamento == 'Todos':
         if municipio == 'Todos':
             df_filtrado = df_unido_limpio[df_unido_limpio['No. ACCESOS FIJOS A INTERNET'] >= accesos]
@@ -90,51 +93,45 @@ def generar_heatmap(departamento, municipio, accesos, limite):
     if limite > 0:
         df_filtrado = df_filtrado.sample(n=limite, random_state=42)
 
-    # Crear mapa centrado en Colombia
+    # Crear el mapa centrado en Colombia
     mapa = folium.Map(location=[4.570868, -74.297333], zoom_start=6)
+    heat_data = [[row['Latitud'], row['Longitud']] for index, row in df_filtrado.iterrows()]
 
-    # Crear un HeatMap
-    heat_data = [[row['Latitud'], row['Longitud'], row['No. ACCESOS FIJOS A INTERNET']] for _, row in df_filtrado.iterrows()]
-    HeatMap(heat_data, radius=10).add_to(mapa)  # Ajusta el radio según sea necesario
+    # Añadir el heatmap
+    HeatMap(heat_data).add_to(mapa)
 
-    return mapa
+    return mapa, df_filtrado
 
 # Sidebar para seleccionar departamento, municipio y accesos
 st.sidebar.title("Filtrar datos del mapa")
 
-# Selección de departamento
 departamentos = ['Todos'] + list(df_unido_limpio['DEPARTAMENTO'].unique())
 departamento_seleccionado = st.sidebar.selectbox('Selecciona el departamento', departamentos)
 
-# Selección de municipio
 if departamento_seleccionado == 'Todos':
     municipios = ['Todos']
-    municipio_seleccionado = 'Todos'
-    max_accesos = df_unido_limpio['No. ACCESOS FIJOS A INTERNET'].max()
 else:
     municipios = ['Todos'] + list(df_unido_limpio[df_unido_limpio['DEPARTAMENTO'] == departamento_seleccionado]['MUNICIPIO'].unique())
-    municipio_seleccionado = st.sidebar.selectbox('Selecciona el municipio', municipios)
 
-    if municipio_seleccionado == 'Todos':
-        max_accesos = df_unido_limpio[df_unido_limpio['DEPARTAMENTO'] == departamento_seleccionado]['No. ACCESOS FIJOS A INTERNET'].max()
-    else:
-        max_accesos = df_unido_limpio[(df_unido_limpio['DEPARTAMENTO'] == departamento_seleccionado) &
-                                      (df_unido_limpio['MUNICIPIO'] == municipio_seleccionado)]['No. ACCESOS FIJOS A INTERNET'].max()
+municipio_seleccionado = st.sidebar.selectbox('Selecciona el municipio', municipios)
 
-# Selección dinámica de accesos
-accesos_seleccionados = st.sidebar.slider('Número mínimo de accesos', min_value=0, max_value=int(max_accesos), value=0)
-
-# Límite de puntos a mostrar
+# Selección de accesos y límite de puntos a mostrar
+accesos_seleccionados = st.sidebar.slider('Número mínimo de accesos', min_value=int(df_unido_limpio['No. ACCESOS FIJOS A INTERNET'].min()),
+                                          max_value=int(df_unido_limpio['No. ACCESOS FIJOS A INTERNET'].max()), value=0)
 limite_puntos = st.sidebar.slider('Número máximo de datos a mostrar', min_value=1, max_value=1000, value=100)
 
-# Generar el heatmap con los filtros aplicados
-mapa_generado = generar_heatmap(departamento_seleccionado, municipio_seleccionado, accesos_seleccionados, limite_puntos)
+# Generar el mapa con los filtros aplicados
+mapa_generado, df_filtrado = generar_mapa(departamento_seleccionado, municipio_seleccionado, accesos_seleccionados, limite_puntos)
 
-# Mostrar el heatmap en Streamlit con mayor tamaño y ajustes responsivos
+# Mostrar el mapa en Streamlit
 folium_static(mapa_generado, width=1300, height=700)
 
-# Mostrar información adicional
+# Mostrar información adicional del dataset en formato tabular
 st.write(f"Departamento seleccionado: {departamento_seleccionado}")
 st.write(f"Municipio seleccionado: {municipio_seleccionado}")
 st.write(f"Número mínimo de accesos: {accesos_seleccionados}")
 st.write(f"Número máximo de puntos mostrados: {limite_puntos}")
+
+# Mostrar detalles adicionales en formato tabular sin el índice
+st.subheader("Detalles de los puntos seleccionados:")
+st.dataframe(df_filtrado[['PROVEEDOR', 'MUNICIPIO', 'SEGMENTO', 'TECNOLOGÍA', 'VELOCIDAD BAJADA', 'VELOCIDAD SUBIDA', 'No. ACCESOS FIJOS A INTERNET']].reset_index(drop=True))
