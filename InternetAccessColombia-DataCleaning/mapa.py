@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import folium_static
-from folium.plugins import MarkerCluster
+from folium.plugins import MarkerCluster, HeatMap
 
 # Configuración para usar el ancho completo de la página
 st.set_page_config(layout="wide")
@@ -66,8 +66,8 @@ def cargar_datos():
 
 df_unido_limpio = cargar_datos()
 
-# Función para generar el mapa
-def generar_mapa(departamento, municipio, accesos, limite):
+# Función para generar el heatmap
+def generar_heatmap(departamento, municipio, accesos, limite):
     if departamento == 'Todos':
         if municipio == 'Todos':
             df_filtrado = df_unido_limpio[df_unido_limpio['No. ACCESOS FIJOS A INTERNET'] >= accesos]
@@ -93,12 +93,9 @@ def generar_mapa(departamento, municipio, accesos, limite):
     # Crear mapa centrado en Colombia
     mapa = folium.Map(location=[4.570868, -74.297333], zoom_start=6)
 
-    # Crear un cluster para los marcadores
-    marker_cluster = MarkerCluster().add_to(mapa)
-
-    for _, row in df_filtrado.iterrows():
-        folium.Marker([row['Latitud'], row['Longitud']],
-                      popup=f"Proveedor: {row['PROVEEDOR']}<br>Tecnología: {row['TECNOLOGÍA']}<br>Accesos: {row['No. ACCESOS FIJOS A INTERNET']}").add_to(marker_cluster)
+    # Crear un HeatMap
+    heat_data = [[row['Latitud'], row['Longitud'], row['No. ACCESOS FIJOS A INTERNET']] for _, row in df_filtrado.iterrows()]
+    HeatMap(heat_data, radius=10).add_to(mapa)  # Ajusta el radio según sea necesario
 
     return mapa
 
@@ -128,12 +125,12 @@ else:
 accesos_seleccionados = st.sidebar.slider('Número mínimo de accesos', min_value=0, max_value=int(max_accesos), value=0)
 
 # Límite de puntos a mostrar
-limite_puntos = st.sidebar.slider('Número máximo de puntos a mostrar', min_value=1, max_value=100, value=10)
+limite_puntos = st.sidebar.slider('Número máximo de datos a mostrar', min_value=1, max_value=1000, value=100)
 
-# Generar el mapa con los filtros aplicados
-mapa_generado = generar_mapa(departamento_seleccionado, municipio_seleccionado, accesos_seleccionados, limite_puntos)
+# Generar el heatmap con los filtros aplicados
+mapa_generado = generar_heatmap(departamento_seleccionado, municipio_seleccionado, accesos_seleccionados, limite_puntos)
 
-# Mostrar el mapa en Streamlit con mayor tamaño y ajustes responsivos
+# Mostrar el heatmap en Streamlit con mayor tamaño y ajustes responsivos
 folium_static(mapa_generado, width=1300, height=700)
 
 # Mostrar información adicional
