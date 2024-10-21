@@ -64,7 +64,7 @@ st.markdown("""
 # Cargar el dataset unido y usar st.cache_data para mejorar el rendimiento
 @st.cache_data
 def cargar_datos():
-    return pd.read_csv('Limpieza/data/df_unificado_limpio.csv')
+    return pd.read_csv('https://datainternetaccess-cleaning.s3.us-west-1.amazonaws.com/df_unificado_limpio.csv')
 
 df_unido_limpio = cargar_datos()
 
