@@ -105,19 +105,29 @@ def generar_mapa(departamento, municipio, accesos, limite):
 # Sidebar para seleccionar departamento, municipio y accesos
 st.sidebar.title("Filtrar datos del mapa")
 
+# Selección de departamento
 departamentos = ['Todos'] + list(df_unido_limpio['DEPARTAMENTO'].unique())
 departamento_seleccionado = st.sidebar.selectbox('Selecciona el departamento', departamentos)
 
+# Selección de municipio
 if departamento_seleccionado == 'Todos':
     municipios = ['Todos']
+    municipio_seleccionado = 'Todos'
+    max_accesos = df_unido_limpio['No. ACCESOS FIJOS A INTERNET'].max()
 else:
     municipios = ['Todos'] + list(df_unido_limpio[df_unido_limpio['DEPARTAMENTO'] == departamento_seleccionado]['MUNICIPIO'].unique())
+    municipio_seleccionado = st.sidebar.selectbox('Selecciona el municipio', municipios)
 
-municipio_seleccionado = st.sidebar.selectbox('Selecciona el municipio', municipios)
+    if municipio_seleccionado == 'Todos':
+        max_accesos = df_unido_limpio[df_unido_limpio['DEPARTAMENTO'] == departamento_seleccionado]['No. ACCESOS FIJOS A INTERNET'].max()
+    else:
+        max_accesos = df_unido_limpio[(df_unido_limpio['DEPARTAMENTO'] == departamento_seleccionado) &
+                                      (df_unido_limpio['MUNICIPIO'] == municipio_seleccionado)]['No. ACCESOS FIJOS A INTERNET'].max()
 
-accesos_seleccionados = st.sidebar.slider('Número mínimo de accesos', min_value=int(df_unido_limpio['No. ACCESOS FIJOS A INTERNET'].min()),
-                                          max_value=int(df_unido_limpio['No. ACCESOS FIJOS A INTERNET'].max()), value=0)
+# Selección dinámica de accesos
+accesos_seleccionados = st.sidebar.slider('Número mínimo de accesos', min_value=0, max_value=int(max_accesos), value=0)
 
+# Límite de puntos a mostrar
 limite_puntos = st.sidebar.slider('Número máximo de puntos a mostrar', min_value=1, max_value=100, value=10)
 
 # Generar el mapa con los filtros aplicados
