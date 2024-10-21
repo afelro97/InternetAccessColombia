@@ -10,7 +10,7 @@ st.set_page_config(layout="wide")
 # Cargar el dataset unido y usar st.cache_data para mejorar el rendimiento
 @st.cache_data
 def cargar_datos():
-    return pd.read_csv('df_unificado_limpio.csv')
+    return pd.read_csv('Limpieza/data/df_unificado_limpio.csv')
 
 df_unido_limpio = cargar_datos()
 
