@@ -2,32 +2,28 @@
 import pandas as pd
 
 #%%
-# Cargar los dos datasets
+# Cargar los datasets originales
 df_internet = pd.read_csv('Limpieza/data/INFORMACIÓN_TRIMESTRAL_DE_ACCESOS_FIJOS_A_INTERNET_POR_PROVEEDOR,_DEPARTAMENTO,_MUNICIPIO,_SEGMENTO,_TECNOLOGIA,_Y_VELOCIDAD_DE_CONEXIÓN_COMPLETO.csv')
-df_coordenadas = pd.read_csv('Limpieza/data/DatasetCoordenadas.csv')
+
+# Cargar las nuevas coordenadas obtenidas
+df_coordenadas_actualizadas = pd.read_csv('Limpieza/data/coordenadas_unicas.csv')
 
 #%%
-# Renombrar la columna 'Ciudad' a 'MUNICIPIO' en el dataset de coordenadas
-df_coordenadas.rename(columns={'Ciudad': 'MUNICIPIO'}, inplace=True)
-
-#%%
-# Normalizar los nombres de municipios en ambos datasets
+# Normalizar los nombres de municipios en ambos datasets para asegurar coincidencia
 df_internet['MUNICIPIO'] = df_internet['MUNICIPIO'].str.strip().str.upper()
-df_coordenadas['MUNICIPIO'] = df_coordenadas['MUNICIPIO'].str.strip().str.upper()
+df_coordenadas_actualizadas['MUNICIPIO'] = df_coordenadas_actualizadas['MUNICIPIO'].str.strip().str.upper()
 
 #%%
 # Unir ambos datasets usando la columna 'MUNICIPIO' como clave
-df_unido = pd.merge(df_internet, df_coordenadas, on='MUNICIPIO', how='left')
+df_unido = pd.merge(df_internet, df_coordenadas_actualizadas, on='MUNICIPIO', how='left')
 
 #%%
-# Identificar municipios sin coordenadas
-municipios_sin_coordenadas = df_unido[df_unido['Latitud'].isnull()]['MUNICIPIO'].unique()
-print("Municipios sin coordenadas:", municipios_sin_coordenadas)
-
-#%%
-# Guardar los municipios sin coordenadas para posible corrección manual o uso de API
-df_sin_coordenadas = df_unido[df_unido['Latitud'].isnull()]
-df_sin_coordenadas.to_csv('Limpieza/data/municipios_sin_coordenadas.csv', index=False)
+# Resolver el problema de duplicación de columnas
+# Mantener solo una columna DEPARTAMENTO
+if 'DEPARTAMENTO_x' in df_unido.columns and 'DEPARTAMENTO_y' in df_unido.columns:
+    # Eliminar la columna duplicada
+    df_unido = df_unido.drop(columns=['DEPARTAMENTO_y'])
+    df_unido.rename(columns={'DEPARTAMENTO_x': 'DEPARTAMENTO'}, inplace=True)
 
 #%%
 # Crear dataset limpio eliminando valores nulos en coordenadas
@@ -40,14 +36,7 @@ print(f"Total de filas después de limpiar: {len(df_unificado_limpio)}")
 print(f"Porcentaje de datos eliminados: {100 * (1 - len(df_unificado_limpio) / len(df_unido)):.2f}%")
 
 #%%
-# Guardar el DataFrame limpio en un archivo CSV
+# Guardar el nuevo DataFrame limpio en un archivo CSV
 df_unificado_limpio.to_csv('Limpieza/data/df_unificado_limpio.csv', index=False)
 
-#%%
-# Opcional: Guardar los datos incompletos para análisis futuro
-df_incompleto = df_unido[df_unido['Latitud'].isnull() | df_unido['Longitud'].isnull()]
-df_incompleto.to_csv('Limpieza/data/datos_incompletos.csv', index=False)
-
-#%%
-# Mostrar las columnas del dataset limpio para validación
-df_unificado_limpio.columns
+print("El nuevo archivo 'df_unificado_limpio.csv' se ha generado con éxito.")
