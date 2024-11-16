@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import folium
 from streamlit_folium import folium_static
-from folium.plugins import MarkerCluster, HeatMap
+from folium.plugins import HeatMap
+import os
 
 # Configuración para usar el ancho completo de la página
 st.set_page_config(layout="wide")
@@ -10,128 +11,93 @@ st.set_page_config(layout="wide")
 # Agregar CSS personalizado para ajustar el layout y hacerlo responsive
 st.markdown("""
     <style>
-    /* Ajuste del contenedor del mapa */
     .streamlit-expanderHeader, .streamlit-expanderBody {
         padding-left: 10px;
         padding-right: 10px;
     }
-    
-    /* Hacer que el mapa ocupe toda la pantalla disponible */
-    #map {
-        width: 100%;
-        height: calc(100vh - 150px);  /* Ajuste dinámico de altura según la pantalla */
-    }
-    
-    /* Ajuste general para pantallas pequeñas */
-    @media (max-width: 768px) {
-        .css-1d391kg {
-            margin-left: 0;
-            margin-right: 0;
-        }
-        .css-18e3th9 {
-            padding-top: 10px;
-            padding-left: 5px;
-            padding-right: 5px;
-        }
-        /* Ajustes para el mapa en pantallas pequeñas */
-        iframe {
-            width: 100% !important;
-            height: 400px !important;
-        }
-    }
-    
-    /* Ajustes para pantallas medianas */
-    @media (min-width: 768px) and (max-width: 1200px) {
-        iframe {
-            width: 100% !important;
-            height: 600px !important;
-        }
-    }
-
-    /* Ajustes para pantallas grandes */
-    @media (min-width: 1200px) {
-        iframe {
-            width: 100% !important;
-            height: 800px !important;
-        }
+    iframe {
+        width: 100% !important;
+        height: 700px !important;
     }
     [data-testid="stElementToolbar"] {
-                    display: none;
-                }
+        display: none;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# Cargar el dataset unido y usar st.cache_data para mejorar el rendimiento
+# Función para cargar los datos con base en la selección
 @st.cache_data
-def cargar_datos():
-    return pd.read_csv('https://datainternetaccess-cleaning.s3.us-west-1.amazonaws.com/df_unificado_limpio.csv')
-
-df_unido_limpio = cargar_datos()
-
-# Función para generar el heatmap
-# Función para generar el mapa
-def generar_mapa(departamento, municipio, accesos, limite):
+def cargar_datos(departamento):
     if departamento == 'Todos':
-        if municipio == 'Todos':
-            df_filtrado = df_unido_limpio[df_unido_limpio['No. ACCESOS FIJOS A INTERNET'] >= accesos]
-        else:
-            df_filtrado = df_unido_limpio[(df_unido_limpio['MUNICIPIO'] == municipio) &
-                                          (df_unido_limpio['No. ACCESOS FIJOS A INTERNET'] >= accesos)]
+        # Cargar el dataset completo si se selecciona 'Todos'
+        print("Cargando el dataset completo: df_unificado_limpio.csv")
+        return pd.read_csv('https://datainternetaccess-cleaning.s3.us-west-1.amazonaws.com/df_unificado_limpio.csv')
     else:
-        if municipio == 'Todos':
-            df_filtrado = df_unido_limpio[(df_unido_limpio['DEPARTAMENTO'] == departamento) &
-                                          (df_unido_limpio['No. ACCESOS FIJOS A INTERNET'] >= accesos)]
+        # Cargar el dataset específico del departamento
+        file_path = f'Limpieza/data/departamentos/{departamento}.csv'
+        if os.path.exists(file_path):
+            print(f"Cargando el dataset para el departamento: {departamento}")
+            return pd.read_csv(file_path)
         else:
-            df_filtrado = df_unido_limpio[(df_unido_limpio['DEPARTAMENTO'] == departamento) &
-                                          (df_unido_limpio['MUNICIPIO'] == municipio) &
-                                          (df_unido_limpio['No. ACCESOS FIJOS A INTERNET'] >= accesos)]
-
-    # Limitar el número de puntos a mostrar al tamaño real de los datos filtrados
-    limite = min(limite, len(df_filtrado))
-
-    # Tomar una muestra aleatoria de los datos si el límite es menor que la cantidad de datos disponibles
-    if limite > 0:
-        df_filtrado = df_filtrado.sample(n=limite, random_state=42)
-
-    # Crear el mapa centrado en Colombia
-    mapa = folium.Map(location=[4.570868, -74.297333], zoom_start=6)
-    heat_data = [[row['Latitud'], row['Longitud']] for index, row in df_filtrado.iterrows()]
-
-    # Añadir el heatmap
-    HeatMap(heat_data).add_to(mapa)
-
-    return mapa, df_filtrado
-
-# Sidebar para seleccionar departamento, municipio y accesos
+            st.warning(f"No se encontró el archivo para el departamento: {departamento}.")
+            print(f"Archivo no encontrado para el departamento: {departamento}")
+            return pd.DataFrame()  # Retornar DataFrame vacío si no existe el archivo
+# Sidebar para seleccionar departamento y municipio
 st.sidebar.title("Filtrar datos del mapa")
 
-departamentos = ['Todos'] + list(df_unido_limpio['DEPARTAMENTO'].unique())
-departamento_seleccionado = st.sidebar.selectbox('Selecciona el departamento', departamentos)
+# Obtener lista de departamentos únicos
+todos_departamentos = ['Todos'] + sorted([file.replace('.csv', '') for file in os.listdir('Limpieza/data/departamentos') if file.endswith('.csv')])
+departamento_seleccionado = st.sidebar.selectbox('Selecciona el departamento', todos_departamentos)
 
-if departamento_seleccionado == 'Todos':
-    municipios = ['Todos']
+# Cargar los datos del departamento seleccionado
+df_unido_limpio = cargar_datos(departamento_seleccionado)
+
+# Validar si hay datos antes de continuar
+if df_unido_limpio.empty:
+    st.warning("No hay datos disponibles para los filtros seleccionados.")
 else:
-    municipios = ['Todos'] + list(df_unido_limpio[df_unido_limpio['DEPARTAMENTO'] == departamento_seleccionado]['MUNICIPIO'].unique())
+    municipios = ['Todos'] + sorted(df_unido_limpio['MUNICIPIO'].unique())
 
-municipio_seleccionado = st.sidebar.selectbox('Selecciona el municipio', municipios)
+    municipio_seleccionado = st.sidebar.selectbox('Selecciona el municipio', municipios)
 
-# Selección de accesos y límite de puntos a mostrar
-accesos_seleccionados = st.sidebar.slider('Número mínimo de accesos', min_value=int(df_unido_limpio['No. ACCESOS FIJOS A INTERNET'].min()),
-                                          max_value=int(df_unido_limpio['No. ACCESOS FIJOS A INTERNET'].max()), value=0)
-limite_puntos = st.sidebar.slider('Número máximo de datos a mostrar', min_value=1, max_value=1000, value=100)
+    # Selección del límite de puntos a mostrar
+    limite_puntos = st.sidebar.slider('Número máximo de datos a mostrar', min_value=1, max_value=1000, value=100)
 
-# Generar el mapa con los filtros aplicados
-mapa_generado, df_filtrado = generar_mapa(departamento_seleccionado, municipio_seleccionado, accesos_seleccionados, limite_puntos)
+    # Función para generar el mapa
+    def generar_mapa(municipio, limite):
+        df_filtrado = df_unido_limpio.copy()
 
-# Mostrar el mapa en Streamlit
-folium_static(mapa_generado, width=1300, height=700)
+        if municipio != 'Todos':
+            df_filtrado = df_filtrado[df_filtrado['MUNICIPIO'] == municipio]
 
-# Mostrar información adicional del dataset en formato tabular
-st.write(f"Departamento seleccionado: {departamento_seleccionado}")
-st.write(f"Municipio seleccionado: {municipio_seleccionado}")
-st.write(f"Número mínimo de accesos: {accesos_seleccionados}")
-st.write(f"Número máximo de puntos mostrados: {limite_puntos}")
+        limite = min(limite, len(df_filtrado))
+        df_filtrado = df_filtrado.head(limite)
 
-# Mostrar detalles adicionales en formato tabular sin el índice
-st.subheader("Detalles de los puntos seleccionados:")
-st.dataframe(df_filtrado[['PROVEEDOR', 'MUNICIPIO', 'SEGMENTO', 'TECNOLOGÍA', 'VELOCIDAD BAJADA', 'VELOCIDAD SUBIDA', 'No. ACCESOS FIJOS A INTERNET']].reset_index(drop=True))
+        # Verificar si hay datos después del filtrado
+        if df_filtrado.empty:
+            st.warning("No hay datos para mostrar con los filtros seleccionados.")
+            return folium.Map(location=[4.570868, -74.297333], zoom_start=6), df_filtrado
+
+        centro = [df_filtrado['Latitud'].mean(), df_filtrado['Longitud'].mean()]
+        mapa = folium.Map(location=centro, zoom_start=7)
+
+        # Generar HeatMap
+        heat_data = [[row['Latitud'], row['Longitud']] for _, row in df_filtrado.iterrows()]
+        HeatMap(heat_data).add_to(mapa)
+
+        return mapa, df_filtrado
+
+    # Generar el mapa con los filtros aplicados
+    mapa_generado, df_filtrado = generar_mapa(municipio_seleccionado, limite_puntos)
+
+    # Mostrar el mapa en Streamlit
+    folium_static(mapa_generado, width=1300, height=700)
+
+    # Mostrar detalles adicionales del filtrado
+    st.write(f"Departamento seleccionado: {departamento_seleccionado}")
+    st.write(f"Municipio seleccionado: {municipio_seleccionado}")
+    st.write(f"Número máximo de puntos mostrados: {limite_puntos}")
+
+    # Mostrar los puntos seleccionados
+    st.subheader("Detalles de los puntos seleccionados:")
+    st.dataframe(df_filtrado[['PROVEEDOR', 'MUNICIPIO', 'SEGMENTO', 'TECNOLOGÍA', 'VELOCIDAD BAJADA', 'VELOCIDAD SUBIDA', 'No. ACCESOS FIJOS A INTERNET']].reset_index(drop=True))
