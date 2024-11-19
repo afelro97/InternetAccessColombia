@@ -1,8 +1,18 @@
 import streamlit as st
 import pandas as pd
-import folium
-from streamlit_folium import folium_static
 from folium.plugins import HeatMap
+from streamlit_folium import folium_static
+import folium
+from dotenv import load_dotenv
+import os
+
+# Cargar variables de entorno
+load_dotenv()
+DATASET_URL = os.getenv('DATASET_URL')
+
+if not DATASET_URL:
+    st.error("La variable de entorno DATASET_URL no está configurada.")
+    st.stop()
 
 # Configuración para usar el ancho completo de la página
 st.set_page_config(layout="wide")
@@ -27,7 +37,7 @@ st.markdown("""
 # Función para cargar los datos desde S3
 @st.cache_data
 def cargar_datos():
-    return pd.read_csv('https://datainternetaccess-cleaning.s3.us-west-1.amazonaws.com/df_unificado_limpio_actualizado.csv')
+    return pd.read_csv(DATASET_URL)
 
 df_unido_limpio = cargar_datos()
 
