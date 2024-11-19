@@ -123,3 +123,4 @@ webcolors==24.8.0
 webencodings==0.5.1
 websocket-client==1.8.0
 xyzservices==2024.9.0
+python-dotenv==1.0.1
