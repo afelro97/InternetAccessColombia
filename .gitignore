@@ -8,3 +8,7 @@ InternetAccessColombia-DataCleaning/Limpieza/data/df_unificado_limpio.csv
 InternetAccessColombia-DataCleaning/.env
 
 *.csv
+
+InternetAccessColombia-DataCleaning/modelos/catboost/catboost_info/learn/
+
+InternetAccessColombia-DataCleaning/modelos/catboost/catboost_info/
