@@ -5,7 +5,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+import numpy as np
 #%%
 ruta_dataset_mejorado = "../../Limpieza/data/df_mejorado_ing_caract.csv"
 df = pd.read_csv(ruta_dataset_mejorado)
@@ -84,4 +84,43 @@ plt.show()
 # 
 # Con este modelo, estamos en una excelente posición para realizar predicciones confiables y explorar aplicaciones prácticas en la planificación y mejora del acceso a internet.
 # 
+#%%
+# Exportar el modelo
+import joblib
+#%%
+# Exportar el modelo
+joblib.dump(modelo_rf, 'modelo_random_forest.joblib')
+#%%
+import json
+#%%
+caracteristicas = X.columns.tolist()
+with open('características.json', 'w') as f:
+    json.dump(caracteristicas, f)
+#%%
+from sklearn.preprocessing import MinMaxScaler
+#%%
+# Escalar datos originales
+scaler = MinMaxScaler()
+X_scaled = scaler.fit_transform(X)
+#%%
+# Guardar scaler y datos de distribución
+mean = np.mean(X_scaled, axis=0)
+cov = np.cov(X_scaled.T)
+#%%
+# Guardar todo
+joblib.dump({
+    'modelo': modelo_rf,
+    'scaler': scaler,
+    'mean': mean,
+    'cov': cov,
+    'columnas': X.columns.tolist()
+}, 'modelo_completo.joblib')
+#%%
+# Para generar nuevos datos:
+def generar_datos(n_muestras=10):
+    datos = np.random.multivariate_normal(mean, cov, n_muestras)
+    datos_escalados = scaler.inverse_transform(datos)
+    return pd.DataFrame(datos_escalados, columns=X.columns)
+#%%
+generar_datos()
 #%%

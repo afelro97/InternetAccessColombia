@@ -12,3 +12,4 @@ InternetAccessColombia-DataCleaning/.env
 InternetAccessColombia-DataCleaning/modelos/catboost/catboost_info/learn/
 
 InternetAccessColombia-DataCleaning/modelos/catboost/catboost_info/
+*.joblib
