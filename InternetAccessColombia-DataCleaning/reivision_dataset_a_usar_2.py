@@ -41,6 +41,11 @@ df_final = df[[
     'TECNOLOGÍA'
 ]].copy()
 #%%
+df_final.columns
+#%%
+print("\nPrimeras filas:")
+print(df_final.head())
+#%%
 # Para verificar el resultado
 print("Muestra de valores únicos en TRIMESTRE:")
 print(df['TRIMESTRE'].unique())
@@ -81,6 +86,140 @@ print(f"Se han creado {len(ubicaciones)} archivos en Limpieza/data/subdatasets-u
 nombre_municipio = 'ANTIOQUIA.AMALFI'  # Ejemplo, cámbialo por el que quieras ver
 ruta_archivo = f'Limpieza/data/subdatasets-ubicacion/{nombre_municipio}.csv'
 df_municipio = pd.read_csv(ruta_archivo)
+#%%
+def analizar_tecnologias(df):
+    # Extraer ubicación del DataFrame
+    ubicacion = df['UBICACION'].iloc[0] if 'UBICACION' in df.columns else 'Ubicación No Especificada'
+
+    # Calcular estadísticas por trimestre y tecnología
+    stats_por_trimestre = df.groupby(['TRIMESTRE', 'TECNOLOGÍA']).agg({
+        'VELOCIDAD BAJADA': ['mean', 'std'],
+        'VELOCIDAD SUBIDA': ['mean', 'std'],
+        'No. ACCESOS FIJOS A INTERNET': ['mean', 'std']
+    }).reset_index()
+
+    # Renombrar columnas para claridad
+    stats_por_trimestre.columns = [
+        'TRIMESTRE', 'TECNOLOGÍA',
+        'VELOCIDAD_BAJADA_MEAN', 'VELOCIDAD_BAJADA_STD',
+        'VELOCIDAD_SUBIDA_MEAN', 'VELOCIDAD_SUBIDA_STD',
+        'ACCESOS_MEAN', 'ACCESOS_STD'
+    ]
+
+    # Asegurarse de que existe el directorio de gráficas
+    ruta_graficas = 'Limpieza/data/graficas'
+    if not os.path.exists(ruta_graficas):
+        os.makedirs(ruta_graficas)
+
+    # Crear figura
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 12))
+
+    # Graficar accesos por tecnología
+    for tecnologia in df['TECNOLOGÍA'].unique():
+        datos_tech = stats_por_trimestre[stats_por_trimestre['TECNOLOGÍA'] == tecnologia]
+
+        # Regresión lineal para accesos
+        if len(datos_tech) > 1:  # Verificar que hay suficientes datos
+            modelo = LinearRegression()
+            X = datos_tech['TRIMESTRE'].values.reshape(-1, 1)
+            y = datos_tech['ACCESOS_MEAN'].values
+            modelo.fit(X, y)
+            y_pred = modelo.predict(X)
+
+            # Graficar datos y regresión
+            ax1.errorbar(datos_tech['TRIMESTRE'], datos_tech['ACCESOS_MEAN'],
+                         yerr=datos_tech['ACCESOS_STD'], fmt='o-', label=f'{tecnologia}')
+            ax1.plot(X, y_pred, '--', alpha=0.5)
+
+    ax1.set_title(f'Accesos por Tecnología en {ubicacion}')
+    ax1.set_xlabel('Trimestre')
+    ax1.set_ylabel('Número de Accesos (Media ± Std)')
+    ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax1.grid(True)
+    ax1.set_yscale('log')
+
+    # Graficar velocidades por tecnología
+    for tecnologia in df['TECNOLOGÍA'].unique():
+        datos_tech = stats_por_trimestre[stats_por_trimestre['TECNOLOGÍA'] == tecnologia]
+
+        # Regresión lineal para velocidades
+        if len(datos_tech) > 1:  # Verificar que hay suficientes datos
+            modelo = LinearRegression()
+            X = datos_tech['TRIMESTRE'].values.reshape(-1, 1)
+            y = datos_tech['VELOCIDAD_BAJADA_MEAN'].values
+            modelo.fit(X, y)
+            y_pred = modelo.predict(X)
+
+            # Graficar datos y regresión
+            ax2.errorbar(datos_tech['TRIMESTRE'], datos_tech['VELOCIDAD_BAJADA_MEAN'],
+                         yerr=datos_tech['VELOCIDAD_BAJADA_STD'], fmt='o-',
+                         label=f'{tecnologia} - Bajada')
+            ax2.plot(X, y_pred, '--', alpha=0.5)
+
+    ax2.set_title(f'Velocidades por Tecnología en {ubicacion}')
+    ax2.set_xlabel('Trimestre')
+    ax2.set_ylabel('Velocidad (Mbps) (Media ± Std)')
+    ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax2.grid(True)
+    ax2.set_yscale('log')
+
+    plt.tight_layout()
+
+    # Guardar la figura
+    ruta_grafica = f'{ruta_graficas}/{ubicacion.replace(".", "_").replace(" ", "_")}_tecnologias.png'
+    plt.savefig(ruta_grafica, bbox_inches='tight', dpi=300)
+    plt.close()
+
+    # Calcular tendencias para cada tecnología
+    tendencias_tecnologia = {}
+    for tecnologia in df['TECNOLOGÍA'].unique():
+        datos_tech = stats_por_trimestre[stats_por_trimestre['TECNOLOGÍA'] == tecnologia]
+        if len(datos_tech) > 1:
+            # Modelo para velocidad
+            modelo_velocidad = LinearRegression()
+            X = datos_tech['TRIMESTRE'].values.reshape(-1, 1)
+            y = datos_tech['VELOCIDAD_BAJADA_MEAN'].values
+            modelo_velocidad.fit(X, y)
+
+            # Modelo para accesos
+            modelo_accesos = LinearRegression()
+            y_accesos = datos_tech['ACCESOS_MEAN'].values
+            modelo_accesos.fit(X, y_accesos)
+
+            tendencias_tecnologia[tecnologia] = {
+                'pendiente_velocidad': modelo_velocidad.coef_[0],
+                'r2_velocidad': r2_score(y, modelo_velocidad.predict(X)),
+                'pendiente_accesos': modelo_accesos.coef_[0],
+                'r2_accesos': r2_score(y_accesos, modelo_accesos.predict(X)),
+                'velocidad_media': datos_tech['VELOCIDAD_BAJADA_MEAN'].mean(),
+                'velocidad_std': datos_tech['VELOCIDAD_BAJADA_STD'].mean(),
+                'accesos_media': datos_tech['ACCESOS_MEAN'].mean(),
+                'accesos_std': datos_tech['ACCESOS_STD'].mean()
+            }
+
+    return stats_por_trimestre, ruta_grafica, tendencias_tecnologia
+
+# Ejecutar el análisis
+stats_tecnologia = analizar_tecnologias(df_municipio)
+
+# Imprimir estadísticas y tendencias
+for tecnologia in df_municipio['TECNOLOGÍA'].unique():
+    datos_tech = stats_tecnologia[stats_tecnologia['TECNOLOGÍA'] == tecnologia]
+
+    # Calcular tendencias
+    if len(datos_tech) > 1:
+        modelo_velocidad = LinearRegression()
+        X = datos_tech['TRIMESTRE'].values.reshape(-1, 1)
+        y = datos_tech['VELOCIDAD_BAJADA_MEAN'].values
+        modelo_velocidad.fit(X, y)
+
+        pendiente_velocidad = modelo_velocidad.coef_[0]
+        r2_velocidad = r2_score(y, modelo_velocidad.predict(X))
+
+        print(f"\n{tecnologia}:")
+        print(f"Tendencia de velocidad: {pendiente_velocidad:.2f} Mbps/trimestre (R² = {r2_velocidad:.2f})")
+        print(f"Velocidad promedio: {datos_tech['VELOCIDAD_BAJADA_MEAN'].mean():.2f} ± {datos_tech['VELOCIDAD_BAJADA_STD'].mean():.2f} Mbps")
+        print(f"Accesos promedio: {datos_tech['ACCESOS_MEAN'].mean():.2f} ± {datos_tech['ACCESOS_STD'].mean():.2f}")
 #%%
 
 # Crear figura y ejes
@@ -398,6 +537,9 @@ def analizar_municipio(ruta_archivo):
         }
     }
 
+    # Análisis por tecnología
+    stats_tecnologia, ruta_grafica, tendencias_tecnologia = analizar_tecnologias(df, nombre_municipio)
+
     return {
         'municipio': nombre_municipio,
         'metricas': metricas,
@@ -407,15 +549,18 @@ def analizar_municipio(ruta_archivo):
             proyecciones_bajada,
             proyecciones_subida,
             proyecciones_accesos
-        ))
+        )),
+        'tendencias_tecnologia': tendencias_tecnologia,
+        'ruta_grafica': ruta_grafica
     }
+
 #%%
 import warnings
 warnings.filterwarnings('ignore')
 #%%
 # Procesar todos los archivos
 resultados = []
-directorio = 'Limpieza/data/subdatasets/'
+directorio = 'Limpieza/data/subdatasets-ubicacion/'
 
 for archivo in os.listdir(directorio):
     if archivo.endswith('.csv'):
@@ -428,14 +573,13 @@ for archivo in os.listdir(directorio):
 
 print(f"\nTotal de archivos procesados: {len(resultados)}")
 #%%
-# Crear archivo Markdown con resultados
 with open('resultados_analisis.md', 'w', encoding='utf-8') as f:
     f.write('# Resultados del Análisis por Municipio\n\n')
 
     for resultado in resultados:
         f.write(f"## {resultado['municipio']}\n\n")
 
-        # Métricas para cada variable
+        # Métricas generales
         for variable in ['bajada', 'subida', 'accesos']:
             f.write(f"### Modelo de {variable.title()}\n")
             f.write(f"- Pendiente: {resultado['metricas'][variable]['pendiente']:.4f}\n")
@@ -443,21 +587,25 @@ with open('resultados_analisis.md', 'w', encoding='utf-8') as f:
             f.write(f"- R² Score: {resultado['metricas'][variable]['R2']:.4f}\n")
             f.write(f"- RMSE: {resultado['metricas'][variable]['RMSE']:.2f}\n\n")
 
-        f.write("### Estadísticas por Trimestre\n")
-        f.write("| Trimestre | Velocidad Bajada (Media ± Std) | Velocidad Subida (Media ± Std) | Accesos (Media ± Std) |\n")
-        f.write("|-----------|--------------------------------|--------------------------------|---------------------|\n")
+        # Análisis por tecnología
+        f.write("### Análisis por Tecnología\n\n")
+        for tecnologia, stats in resultado['tendencias_tecnologia'].items():
+            f.write(f"#### {tecnologia}\n")
+            f.write(f"- Tendencia de velocidad: {stats['pendiente_velocidad']:.2f} Mbps/trimestre (R² = {stats['r2_velocidad']:.4f})\n")
+            f.write(f"- Tendencia de accesos: {stats['pendiente_accesos']:.2f} accesos/trimestre (R² = {stats['r2_accesos']:.4f})\n")
+            f.write(f"- Velocidad promedio: {stats['velocidad_media']:.2f} ± {stats['velocidad_std']:.2f} Mbps\n")
+            f.write(f"- Accesos promedio: {stats['accesos_media']:.2f} ± {stats['accesos_std']:.2f}\n\n")
 
-        for stat in resultado['estadisticas']:
-            f.write(f"| {stat['TRIMESTRE']} | {stat['BAJADA_MEDIA']:.2f} ± {stat['BAJADA_STD']:.2f} | ")
-            f.write(f"{stat['SUBIDA_MEDIA']:.2f} ± {stat['SUBIDA_STD']:.2f} | ")
-            f.write(f"{stat['ACCESOS_MEDIA']:.2f} ± {stat['ACCESOS_STD']:.2f} |\n")
-
-        f.write("\n### Proyecciones para los Próximos 3 Años\n")
-        f.write("| Trimestre | Bajada Proyectada | Subida Proyectada | Accesos Proyectados |\n")
-        f.write("|-----------|-------------------|-------------------|--------------------|\n")
-
-        for trimestre, proj_bajada, proj_subida, proj_accesos in resultado['proyecciones']:
-            f.write(f"| {trimestre} | {proj_bajada:.2f} | {proj_subida:.2f} | {proj_accesos:.2f} |\n")
+        # Gráficas
+        if 'ruta_grafica' in resultado:
+            ruta_relativa = os.path.relpath(resultado['ruta_grafica'], start=os.path.dirname('resultados_analisis.md'))
+            f.write("### Gráficas de Evolución por Tecnología\n\n")
+            f.write(f"![Gráficas de evolución por tecnología para {resultado['municipio']}]({ruta_relativa})\n\n")
+            f.write("**Figura 1:** Evolución temporal de accesos y velocidades por tecnología.\n")
+            f.write("- Panel superior: Número de accesos por tecnología (escala logarítmica)\n")
+            f.write("- Panel inferior: Velocidad de bajada por tecnología (escala logarítmica)\n")
+            f.write("- Las líneas punteadas muestran la tendencia lineal\n")
+            f.write("- Las barras de error indican la desviación estándar\n\n")
 
         f.write("\n---\n\n")
 
