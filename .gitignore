@@ -13,3 +13,6 @@ InternetAccessColombia-DataCleaning/modelos/catboost/catboost_info/learn/
 
 InternetAccessColombia-DataCleaning/modelos/catboost/catboost_info/
 *.joblib
+*.log
+
+InternetAccessColombia-DataCleaning/modelo_final/data_analisis_proyecciones/resultados/
