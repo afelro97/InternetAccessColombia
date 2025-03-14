@@ -39,6 +39,14 @@ class AnalizadorAccesoInternet:
         self.df_tendencias = None  # DataFrame consolidado de tendencias
         self.resultados_markdown = []  # Lista para almacenar el contenido de markdown
 
+        # Lista de municipios a excluir (considerados atípicos)
+        self.municipios_excluir = [
+            "CAUCA_EL_TAMBO",
+            "CALDAS_BELALCÁZAR"
+        ]
+
+        logger.info(f"Se excluirán los siguientes municipios por tener valores atípicos: {', '.join(self.municipios_excluir)}")
+
         # Establecer nivel de depuración
         nivel_numerico = getattr(logging, nivel_debug.upper(), None)
         if isinstance(nivel_numerico, int):
@@ -60,7 +68,8 @@ class AnalizadorAccesoInternet:
 
     def cargar_datos_json(self) -> None:
         """
-        Cargar datos desde múltiples archivos JSON en la carpeta especificada.
+        Cargar datos desde múltiples archivos JSON en la carpeta especificada,
+        excluyendo los municipios marcados como atípicos.
         """
         try:
             patron_archivos = os.path.join(self.carpeta_datos, "*.json")
@@ -70,15 +79,33 @@ class AnalizadorAccesoInternet:
                 logger.error(f"No se encontraron archivos JSON en {self.carpeta_datos}")
                 raise FileNotFoundError(f"No se encontraron archivos JSON en {self.carpeta_datos}")
 
-            logger.info(f"Encontrados {len(archivos_json)} archivos JSON para procesar")
-            self.agregar_a_markdown(f"## Datos Cargados\n\nSe encontraron **{len(archivos_json)} archivos JSON** para análisis.")
+            # Filtrar municipios a excluir
+            archivos_json_filtrados = []
+            for archivo in archivos_json:
+                nombre_base = os.path.basename(archivo)
+                excluido = False
+                for municipio in self.municipios_excluir:
+                    if municipio in nombre_base:
+                        logger.info(f"Excluyendo municipio con valores atípicos: {nombre_base}")
+                        excluido = True
+                        break
+
+                if not excluido:
+                    archivos_json_filtrados.append(archivo)
+
+            total_archivos = len(archivos_json)
+            archivos_filtrados = len(archivos_json_filtrados)
+
+            logger.info(f"Encontrados {total_archivos} archivos JSON. Se excluyen {total_archivos - archivos_filtrados} por valores atípicos.")
+            self.agregar_a_markdown(f"## Datos Cargados\n\nSe encontraron **{total_archivos} archivos JSON** para análisis. "
+                                    f"Se excluyeron **{total_archivos - archivos_filtrados} municipios** por tener valores atípicos.")
 
             # Listas para almacenar datos
             datos_tecnologias = []
             datos_tendencias = []
 
             # Procesar cada archivo JSON
-            for archivo in archivos_json:
+            for archivo in archivos_json_filtrados:
                 try:
                     logger.info(f"Procesando archivo: {archivo}")
 
@@ -93,6 +120,12 @@ class AnalizadorAccesoInternet:
                         # Extraer del nombre del archivo si no está en los datos
                         nombre_archivo = os.path.basename(archivo)
                         municipio = nombre_archivo.replace('.json', '')
+                        municipio = municipio.replace('_results', '')
+
+                    # Verificar si el municipio debe ser excluido
+                    if any(excluir in municipio for excluir in self.municipios_excluir):
+                        logger.info(f"Saltando municipio con valores atípicos: {municipio}")
+                        continue
 
                     # Procesar datos de tecnologías
                     if 'tecnologias' in datos_json and 'stats' in datos_json['tecnologias']:
@@ -167,87 +200,39 @@ class AnalizadorAccesoInternet:
             self.agregar_a_markdown(f"\n❌ **Error al cargar los datos JSON**: {str(e)}")
             raise
 
-    def analizar_por_tecnologia(self) -> pd.DataFrame:
+
+
+    def eliminar_outliers_estadisticos(self, df: pd.DataFrame, columna: str, umbral: float = 3.0) -> pd.DataFrame:
         """
-        Analiza los datos agrupados por municipio y tecnología.
+        Elimina outliers estadísticos basados en Z-score.
+
+        Args:
+            df: DataFrame con los datos
+            columna: Nombre de la columna para detectar outliers
+            umbral: Umbral de Z-score para considerar un dato como outlier
 
         Returns:
-            DataFrame con el análisis por municipio y tecnología
+            DataFrame sin outliers
         """
-        if self.df_tecnologias is None:
-            logger.error("Datos de tecnologías no cargados. Llame a cargar_datos_json() primero.")
-            self.agregar_a_markdown("\n❌ **Error**: Datos de tecnologías no cargados. Es necesario cargar los datos primero.")
-            return pd.DataFrame()
+        if df is None or df.empty or columna not in df.columns:
+            return df
 
-        try:
-            logger.info("Analizando datos por municipio y tecnología")
-            self.agregar_a_markdown("\n## Análisis por Municipio y Tecnología")
+        # Calcular Z-score
+        z_scores = np.abs(stats.zscore(df[columna].dropna()))
 
-            # Obtener las columnas necesarias
-            if 'municipio' not in self.df_tecnologias.columns or 'tecnologia' not in self.df_tecnologias.columns:
-                # Verificar si existen columnas equivalentes
-                if 'municipio' not in self.df_tecnologias.columns:
-                    columnas_posibles = [col for col in self.df_tecnologias.columns if 'muni' in col.lower()]
-                    if columnas_posibles:
-                        self.df_tecnologias = self.df_tecnologias.rename(columns={columnas_posibles[0]: 'municipio'})
-                    else:
-                        logger.error("No se encontró una columna para municipio")
-                        self.agregar_a_markdown("\n❌ **Error**: No se encontró una columna para municipio en los datos.")
-                        return pd.DataFrame()
+        # Crear máscara para filtrar outliers
+        mask = np.ones(len(df), dtype=bool)
+        mask_indices = np.where(~np.isnan(df[columna]))[0]
+        mask[mask_indices[z_scores > umbral]] = False
 
-                if 'tecnologia' not in self.df_tecnologias.columns:
-                    columnas_posibles = [col for col in self.df_tecnologias.columns if 'tecno' in col.lower() or 'tech' in col.lower()]
-                    if columnas_posibles:
-                        self.df_tecnologias = self.df_tecnologias.rename(columns={columnas_posibles[0]: 'tecnologia'})
-                    else:
-                        logger.error("No se encontró una columna para tecnología")
-                        self.agregar_a_markdown("\n❌ **Error**: No se encontró una columna para tecnología en los datos.")
-                        return pd.DataFrame()
+        # Filtrar DataFrame
+        df_filtrado = df[mask].copy()
 
-            # Agrupar por municipio y tecnología, calcular promedios
-            columnas_acceso = [col for col in self.df_tecnologias.columns if 'acceso' in col.lower()]
-            if not columnas_acceso:
-                columnas_acceso = [col for col in self.df_tecnologias.columns if 'acces' in col.lower()]
+        outliers_count = len(df) - len(df_filtrado)
+        if outliers_count > 0:
+            logger.info(f"Se eliminaron {outliers_count} outliers en la columna '{columna}' usando Z-score > {umbral}")
 
-            if columnas_acceso:
-                columna_acceso = columnas_acceso[0]
-                logger.info(f"Usando columna '{columna_acceso}' para análisis de acceso")
-                self.agregar_a_markdown(f"\nSe utilizó la columna '**{columna_acceso}**' para el análisis de acceso a internet.")
-
-                # Agrupar y calcular estadísticas
-                analisis = self.df_tecnologias.groupby(['municipio', 'tecnologia'])[columna_acceso].agg([
-                    ('acceso_promedio', 'mean'),
-                    ('total_registros', 'count')
-                ]).reset_index()
-
-                # Obtener el promedio general de acceso por municipio
-                acceso_por_municipio = self.df_tecnologias.groupby('municipio')[columna_acceso].mean().reset_index()
-                acceso_por_municipio.columns = ['municipio', 'acceso_general_media']
-
-                # Fusionar con el análisis por tecnología
-                analisis = pd.merge(analisis, acceso_por_municipio, on='municipio')
-
-                logger.info(f"Análisis por tecnología completado para {len(analisis)} combinaciones de municipio-tecnología")
-
-                # Resumen para markdown
-                num_municipios = analisis['municipio'].nunique()
-                num_tecnologias = analisis['tecnologia'].nunique()
-                self.agregar_a_markdown(f"\nSe analizaron **{num_municipios} municipios** con **{num_tecnologias} tecnologías diferentes**, "
-                                        f"generando un total de **{len(analisis)} combinaciones** de municipio-tecnología.")
-
-                # Crear visualización de tecnologías más utilizadas
-                self.visualizar_tecnologias_populares(analisis)
-
-                return analisis
-            else:
-                logger.warning("No se encontró una columna adecuada para accesos o penetración")
-                self.agregar_a_markdown("\n⚠️ **Advertencia**: No se encontró una columna adecuada para accesos o penetración en los datos.")
-                return pd.DataFrame()
-
-        except Exception as e:
-            logger.error(f"Error durante el análisis por tecnología: {str(e)}")
-            self.agregar_a_markdown(f"\n❌ **Error durante el análisis por tecnología**: {str(e)}")
-            raise
+        return df_filtrado
 
     def visualizar_tecnologias_populares(self, analisis: pd.DataFrame) -> None:
         """
@@ -326,6 +311,12 @@ class AnalizadorAccesoInternet:
             tendencias_bajada = self.df_tendencias[self.df_tendencias['tipo'] == 'bajada'].copy()
 
             if len(tendencias_bajada) > 0:
+                # Eliminar datos atípicos adicionales usando Z-score para:
+                # 1. Velocidad media (media)
+                # 2. Tendencia de cambio (tendencia)
+                tendencias_bajada = self.eliminar_outliers_estadisticos(tendencias_bajada, 'media', 3.0)
+                tendencias_bajada = self.eliminar_outliers_estadisticos(tendencias_bajada, 'tendencia', 3.0)
+
                 # Ordenar por media de velocidad
                 tendencias_bajada = tendencias_bajada.sort_values(by='media', ascending=False)
 
@@ -333,7 +324,8 @@ class AnalizadorAccesoInternet:
                 tendencias_bajada['ranking'] = range(1, len(tendencias_bajada) + 1)
 
                 logger.info(f"Análisis por velocidad completado para {len(tendencias_bajada)} municipios")
-                self.agregar_a_markdown(f"\nSe analizaron las velocidades de internet de **{len(tendencias_bajada)} municipios**.")
+                self.agregar_a_markdown(f"\nSe analizaron las velocidades de internet de **{len(tendencias_bajada)} municipios**, "
+                                        f"excluyendo valores atípicos.")
 
                 # Generar visualización de distribución de velocidades
                 self.visualizar_distribucion_velocidades(tendencias_bajada)
@@ -372,7 +364,7 @@ class AnalizadorAccesoInternet:
             plt.axvline(media, color='red', linestyle='--', label=f'Media: {media:.2f} Mbps')
             plt.axvline(mediana, color='green', linestyle='-.', label=f'Mediana: {mediana:.2f} Mbps')
 
-            plt.title('Distribución de Velocidades de Internet (Bajada)', fontsize=15)
+            plt.title('Distribución de Velocidades de Internet (Bajada) - Sin Valores Atípicos', fontsize=15)
             plt.xlabel('Velocidad Media (Mbps)', fontsize=12)
             plt.ylabel('Frecuencia', fontsize=12)
             plt.legend()
@@ -395,7 +387,8 @@ class AnalizadorAccesoInternet:
             q1 = tendencias['media'].quantile(0.25)
             q3 = tendencias['media'].quantile(0.75)
 
-            self.agregar_a_markdown("La gráfica muestra la distribución de velocidades de internet (bajada) en los municipios analizados. "
+            self.agregar_a_markdown("La gráfica muestra la distribución de velocidades de internet (bajada) en los municipios analizados, "
+                                    "excluyendo valores atípicos para una mejor visualización. "
                                     f"La velocidad media es de **{media:.2f} Mbps** y la mediana es de **{mediana:.2f} Mbps**. "
                                     f"La velocidad mínima registrada es de **{min_vel:.2f} Mbps** y la máxima de **{max_vel:.2f} Mbps**. "
                                     f"El 50% central de los municipios tiene velocidades entre **{q1:.2f}** y **{q3:.2f} Mbps**.")
@@ -425,11 +418,22 @@ class AnalizadorAccesoInternet:
             plt.axvline(x=tendencias['media'].median(), color='blue', linestyle='--',
                         alpha=0.7, label=f'Mediana: {tendencias["media"].median():.2f} Mbps')
 
-            # Marcar puntos interesantes
+            # Marcar puntos interesantes - ajustando el criterio para no mostrar demasiados
+            umbral_tendencia = tendencias['tendencia'].quantile(0.90)  # Mostrar solo top 10%
+            umbral_velocidad = tendencias['media'].quantile(0.90)      # Mostrar solo top 10%
+
             municipios_destacados = tendencias[
-                (abs(tendencias['tendencia']) > tendencias['tendencia'].quantile(0.95)) |
-                (tendencias['media'] > tendencias['media'].quantile(0.95))
+                (tendencias['tendencia'] > umbral_tendencia) |
+                (tendencias['tendencia'] < -umbral_tendencia) |
+                (tendencias['media'] > umbral_velocidad)
                 ]
+
+            # Limitar a máximo 10 municipios destacados
+            if len(municipios_destacados) > 10:
+                municipios_destacados = pd.concat([
+                    municipios_destacados.nlargest(5, 'media'),
+                    municipios_destacados.nlargest(5, 'tendencia')
+                ]).drop_duplicates()
 
             # Etiquetar algunos puntos destacados
             for idx, row in municipios_destacados.iterrows():
@@ -460,7 +464,7 @@ class AnalizadorAccesoInternet:
                      'Alta velocidad\nEmpeorando',
                      ha='center', bbox=dict(facecolor='lightcoral', alpha=0.4))
 
-            plt.title('Relación entre Velocidad Media y Tendencia por Municipio', fontsize=15)
+            plt.title('Relación entre Velocidad Media y Tendencia por Municipio (Sin Valores Atípicos)', fontsize=15)
             plt.xlabel('Velocidad Media (Mbps)', fontsize=12)
             plt.ylabel('Tendencia (Cambio en Mbps)', fontsize=12)
             plt.grid(True, alpha=0.3)
@@ -481,7 +485,8 @@ class AnalizadorAccesoInternet:
             municipios_empeorando = len(tendencias[tendencias['tendencia'] < 0])
             pct_mejorando = (municipios_mejorando / len(tendencias)) * 100
 
-            self.agregar_a_markdown("Esta gráfica muestra la relación entre la velocidad actual de internet y su tendencia de cambio para cada municipio. "
+            self.agregar_a_markdown("Esta gráfica muestra la relación entre la velocidad actual de internet y su tendencia de cambio para cada municipio, "
+                                    "excluyendo valores atípicos para una mejor visualización. "
                                     "Los puntos están coloreados según el valor R² que indica la calidad del modelo de predicción.\n\n"
                                     "Los cuadrantes representan:\n"
                                     "- **Alta velocidad, Mejorando**: Municipios con buena conectividad que sigue mejorando\n"
@@ -521,6 +526,13 @@ class AnalizadorAccesoInternet:
                     # Agrupar por municipio y calcular la media de accesos
                     accesos_por_municipio = self.df_tecnologias.groupby('municipio')[columna_acceso].mean().reset_index()
                     accesos_por_municipio.columns = ['municipio', 'acceso_promedio']
+
+                    # Filtrar municipios excluidos y valores atípicos
+                    for municipio in self.municipios_excluir:
+                        accesos_por_municipio = accesos_por_municipio[~accesos_por_municipio['municipio'].str.contains(municipio, case=False)]
+
+                    # Eliminar outliers estadísticos
+                    accesos_por_municipio = self.eliminar_outliers_estadisticos(accesos_por_municipio, 'acceso_promedio', 2.5)
 
                     # Ordenar y obtener los mejores y peores
                     accesos_ordenados = accesos_por_municipio.sort_values(by='acceso_promedio', ascending=False)
@@ -562,7 +574,8 @@ class AnalizadorAccesoInternet:
                     # Agregar al markdown
                     self.agregar_a_markdown("\n### Municipios por Nivel de Acceso\n")
                     self.agregar_a_markdown(f"![Mejores y Peores Municipios por Acceso](figuras/mejores_peores_acceso.png)\n")
-                    self.agregar_a_markdown(f"Esta gráfica muestra los {n} municipios con mayor y menor acceso a internet según los datos analizados. "
+                    self.agregar_a_markdown(f"Esta gráfica muestra los {n} municipios con mayor y menor acceso a internet según los datos analizados "
+                                            f"(excluyendo valores atípicos). "
                                             f"El municipio con mayor acceso es **{mejores_acceso.iloc[0]['municipio']}** con un valor de "
                                             f"**{mejores_acceso.iloc[0]['acceso_promedio']:.2f}**, mientras que el municipio con menor acceso es "
                                             f"**{peores_acceso.iloc[-1]['municipio']}** con un valor de **{peores_acceso.iloc[-1]['acceso_promedio']:.2f}**.")
@@ -573,6 +586,13 @@ class AnalizadorAccesoInternet:
             if self.df_tendencias is not None:
                 # Filtrar solo datos de tendencia de bajada
                 tendencias_bajada = self.df_tendencias[self.df_tendencias['tipo'] == 'bajada'].copy()
+
+                # Excluir municipios específicos
+                for municipio in self.municipios_excluir:
+                    tendencias_bajada = tendencias_bajada[~tendencias_bajada['municipio'].str.contains(municipio, case=False)]
+
+                # Eliminar outliers estadísticos
+                tendencias_bajada = self.eliminar_outliers_estadisticos(tendencias_bajada, 'media', 2.5)
 
                 if len(tendencias_bajada) > 0:
                     # Ordenar por media de velocidad
@@ -615,7 +635,8 @@ class AnalizadorAccesoInternet:
                     # Agregar al markdown
                     self.agregar_a_markdown("\n### Municipios por Velocidad de Internet\n")
                     self.agregar_a_markdown(f"![Mejores y Peores Municipios por Velocidad](figuras/mejores_peores_velocidad.png)\n")
-                    self.agregar_a_markdown(f"Esta gráfica muestra los {n} municipios con mayor y menor velocidad de internet (bajada). "
+                    self.agregar_a_markdown(f"Esta gráfica muestra los {n} municipios con mayor y menor velocidad de internet (bajada), "
+                                            f"excluyendo valores atípicos. "
                                             f"El municipio con mayor velocidad es **{mejores_velocidad.iloc[0]['municipio']}** con "
                                             f"**{mejores_velocidad.iloc[0]['media']:.2f} Mbps** y una tendencia de "
                                             f"**{mejores_velocidad.iloc[0]['tendencia']:.2f}**. El municipio con menor velocidad es "
@@ -646,10 +667,15 @@ class AnalizadorAccesoInternet:
 
             # Calcular la velocidad media por tecnología
             if 'tecnologia' in self.df_tecnologias.columns and 'velocidad_bajada_media' in self.df_tecnologias.columns:
+                # Filtrar municipios a excluir
+                df_filtrado = self.df_tecnologias.copy()
+                for municipio in self.municipios_excluir:
+                    df_filtrado = df_filtrado[~df_filtrado['municipio'].str.contains(municipio, case=False)]
+
                 # Agrupar por tecnología y calcular estadísticas
-                velocidad_por_tecnologia = self.df_tecnologias.groupby('tecnologia').agg({
+                velocidad_por_tecnologia = df_filtrado.groupby('tecnologia').agg({
                     'velocidad_bajada_media': ['mean', 'std', 'count'],
-                    'velocidad_subida_media': ['mean', 'std', 'count'] if 'velocidad_subida_media' in self.df_tecnologias.columns else None
+                    'velocidad_subida_media': ['mean', 'std', 'count'] if 'velocidad_subida_media' in df_filtrado.columns else None
                 }).reset_index()
 
                 # Limpiar y renombrar columnas
@@ -709,7 +735,7 @@ class AnalizadorAccesoInternet:
                 tabla.set_fontsize(10)
                 tabla.scale(1.2, 1.5)
 
-                plt.title('Velocidades de Internet por Tecnología', fontsize=16)
+                plt.title('Velocidades de Internet por Tecnología (Sin Valores Atípicos)', fontsize=16)
                 plt.tight_layout()
 
                 # Guardar figura
@@ -720,7 +746,8 @@ class AnalizadorAccesoInternet:
                 # Agregar al markdown
                 self.agregar_a_markdown("\n### Velocidades por Tecnología\n")
                 self.agregar_a_markdown(f"![Velocidades por Tecnología](figuras/tecnologias_velocidad.png)\n")
-                self.agregar_a_markdown("Esta tabla muestra las velocidades promedio (bajada y subida) para las principales tecnologías de internet. "
+                self.agregar_a_markdown("Esta tabla muestra las velocidades promedio (bajada y subida) para las principales tecnologías de internet, "
+                                        f"excluyendo valores atípicos. "
                                         f"La tecnología **{top_tecnologias.iloc[0]['tecnologia']}** ofrece la mayor velocidad de bajada con "
                                         f"**{top_tecnologias.iloc[0]['velocidad_bajada_media_mean']:.2f} Mbps**, mientras que "
                                         f"**{top_tecnologias.iloc[-1]['tecnologia']}** presenta la menor velocidad entre las tecnologías principales "
@@ -742,18 +769,26 @@ class AnalizadorAccesoInternet:
             logger.info("Generando conclusiones del análisis")
             self.agregar_a_markdown("\n## Conclusiones del Análisis")
 
+            self.agregar_a_markdown("\n*Nota: Las siguientes conclusiones se basan en el análisis realizado excluyendo valores atípicos "
+                                    "como CAUCA_EL_TAMBO y CALDAS_BELALCÁZAR para obtener una representación más precisa.*\n")
+
             conclusiones = []
 
             # Conclusiones sobre tecnologías
             if self.df_tecnologias is not None:
+                # Filtrar datos para excluir municipios atípicos
+                df_tech_filtrado = self.df_tecnologias.copy()
+                for municipio in self.municipios_excluir:
+                    df_tech_filtrado = df_tech_filtrado[~df_tech_filtrado['municipio'].str.contains(municipio, case=False)]
+
                 # Identificar tecnología más común
-                if 'tecnologia' in self.df_tecnologias.columns:
-                    tecnologia_comun = self.df_tecnologias['tecnologia'].value_counts().index[0]
+                if 'tecnologia' in df_tech_filtrado.columns:
+                    tecnologia_comun = df_tech_filtrado['tecnologia'].value_counts().index[0]
                     conclusiones.append(f"- La tecnología de acceso a internet más utilizada en los municipios analizados es **{tecnologia_comun}**.")
 
                 # Identificar tecnología con mayor velocidad
-                if 'tecnologia' in self.df_tecnologias.columns and 'velocidad_bajada_media' in self.df_tecnologias.columns:
-                    tech_velocidad = self.df_tecnologias.groupby('tecnologia')['velocidad_bajada_media'].mean()
+                if 'tecnologia' in df_tech_filtrado.columns and 'velocidad_bajada_media' in df_tech_filtrado.columns:
+                    tech_velocidad = df_tech_filtrado.groupby('tecnologia')['velocidad_bajada_media'].mean()
                     mejor_tech = tech_velocidad.idxmax()
                     peor_tech = tech_velocidad.idxmin()
                     conclusiones.append(f"- La tecnología que ofrece mayor velocidad de bajada es **{mejor_tech}** con "
@@ -762,7 +797,15 @@ class AnalizadorAccesoInternet:
 
             # Conclusiones sobre velocidades y tendencias
             if self.df_tendencias is not None:
-                tendencias_bajada = self.df_tendencias[self.df_tendencias['tipo'] == 'bajada']
+                tendencias_bajada = self.df_tendencias[self.df_tendencias['tipo'] == 'bajada'].copy()
+
+                # Filtrar municipios excluidos
+                for municipio in self.municipios_excluir:
+                    tendencias_bajada = tendencias_bajada[~tendencias_bajada['municipio'].str.contains(municipio, case=False)]
+
+                # Eliminar otros outliers estadísticos
+                tendencias_bajada = self.eliminar_outliers_estadisticos(tendencias_bajada, 'media', 2.5)
+                tendencias_bajada = self.eliminar_outliers_estadisticos(tendencias_bajada, 'tendencia', 2.5)
 
                 if len(tendencias_bajada) > 0:
                     # Porcentaje de municipios con tendencia positiva
@@ -780,6 +823,12 @@ class AnalizadorAccesoInternet:
                                             f"con una tendencia de **+{mayor_mejora['tendencia']:.2f} Mbps**, mientras que "
                                             f"**{mayor_deterioro['municipio']}** muestra el mayor deterioro con una tendencia "
                                             f"de **{mayor_deterioro['tendencia']:.2f} Mbps**.")
+
+                    # Velocidad promedio
+                    velocidad_promedio = tendencias_bajada['media'].mean()
+                    velocidad_mediana = tendencias_bajada['media'].median()
+                    conclusiones.append(f"- La velocidad promedio de internet en los municipios analizados es de **{velocidad_promedio:.2f} Mbps**, "
+                                        f"con una mediana de **{velocidad_mediana:.2f} Mbps**, lo que indica una distribución {('sesgada' if abs(velocidad_promedio - velocidad_mediana) > 1 else 'bastante simétrica')}.")
 
             # Agregar conclusiones al markdown
             if conclusiones:
@@ -807,7 +856,9 @@ class AnalizadorAccesoInternet:
                 "## Resumen Ejecutivo\n",
                 "Este informe presenta un análisis completo del acceso a internet en diferentes municipios de Colombia, ",
                 "incluyendo tecnologías utilizadas, velocidades promedio y tendencias de cambio. Las visualizaciones ",
-                "muestran los municipios con mejor y peor conectividad, así como las tecnologías predominantes.\n"
+                "muestran los municipios con mejor y peor conectividad, así como las tecnologías predominantes.\n\n",
+                f"**Nota:** Se han excluido municipios con valores atípicos ({', '.join(self.municipios_excluir)}) para obtener ",
+                "visualizaciones más representativas de la tendencia general en el país.\n"
             ]
 
             # Combinar todo el contenido
@@ -823,6 +874,9 @@ class AnalizadorAccesoInternet:
         except Exception as e:
             logger.error(f"Error al exportar markdown: {str(e)}")
 
+# Importar scipy.stats para el método de eliminación de outliers
+import scipy.stats as stats
+
 # Función principal para ejecutar el análisis
 def ejecutar_analisis_completo(carpeta_datos="./resultados", nivel_debug='INFO'):
     """
@@ -834,6 +888,8 @@ def ejecutar_analisis_completo(carpeta_datos="./resultados", nivel_debug='INFO')
     """
     try:
         logger.info("Iniciando análisis completo de acceso a internet")
+        logger.info(f"Se utilizará la carpeta de datos: {carpeta_datos}")
+        logger.info(f"Se excluirán municipios con valores atípicos: CAUCA_EL_TAMBO, CALDAS_BELALCÁZAR")
 
         # Crear instancia del analizador
         analizador = AnalizadorAccesoInternet(carpeta_datos, nivel_debug)
@@ -863,13 +919,15 @@ def ejecutar_analisis_completo(carpeta_datos="./resultados", nivel_debug='INFO')
         logger.error(f"Error durante el análisis completo: {str(e)}")
         raise
 
+
+
 # Si se ejecuta como script principal
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Analizar datos de acceso a internet desde archivos JSON y exportar a Markdown.')
-    parser.add_argument('--carpeta', type=str, default=r"./resultados",
-                        help='Carpeta con archivos JSON (default: resultados)')
+    parser.add_argument('--carpeta', type=str, default="./resultados",
+                        help='Carpeta con archivos JSON (default: ./resultados)')
     parser.add_argument('--debug', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Nivel de depuración (default: INFO)')
     args = parser.parse_args()
